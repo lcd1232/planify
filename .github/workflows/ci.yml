@@ -203,14 +203,43 @@ jobs:
           gio-querymodules "$LIB_DIR/gio/modules/" 2>/dev/null || true
 
           # Bundle GDK pixbuf loaders
-          mkdir -p "$LIB_DIR/gdk-pixbuf-2.0"
+          mkdir -p "$LIB_DIR/gdk-pixbuf-2.0/loaders"
           GDK_PIXBUF_DIR="$(pkg-config --variable=gdk_pixbuf_moduledir gdk-pixbuf-2.0)"
           if [ -d "$GDK_PIXBUF_DIR" ]; then
-            cp -R "$GDK_PIXBUF_DIR" "$LIB_DIR/gdk-pixbuf-2.0/"
+            cp "$GDK_PIXBUF_DIR"/*.so "$LIB_DIR/gdk-pixbuf-2.0/loaders/" 2>/dev/null || true
+            cp "$GDK_PIXBUF_DIR"/*.dylib "$LIB_DIR/gdk-pixbuf-2.0/loaders/" 2>/dev/null || true
           fi
+          
+          # Rewrite and bundle dependencies of GDK pixbuf loaders
+          for mod in "$LIB_DIR/gdk-pixbuf-2.0/loaders/"*; do
+            [ -f "$mod" ] || continue
+            chmod 755 "$mod"
+            for dep in $(otool -L "$mod" | tail -n +2 | awk '{print $1}'); do
+              if echo "$dep" | grep -qE '^(/usr/lib|/System|@executable_path)'; then
+                continue
+              fi
+              depname=$(basename "$dep")
+              depsrc="$dep"
+              if echo "$dep" | grep -q '@rpath'; then
+                depsrc=$(resolve_rpath "$mod" "$dep")
+                [ -z "$depsrc" ] && continue
+              fi
+              install_name_tool -change "$dep" "@executable_path/lib/$depname" "$mod"
+              if [ -f "$depsrc" ]; then
+                bundle_lib "$depsrc"
+              fi
+            done
+          done
+          
+          # Sign loaders
+          codesign -s - --force "$LIB_DIR/gdk-pixbuf-2.0/loaders/"*.so 2>/dev/null || true
+          codesign -s - --force "$LIB_DIR/gdk-pixbuf-2.0/loaders/"*.dylib 2>/dev/null || true
+
+          # Bundle and sanitize loaders.cache
           GDK_PIXBUF_CACHE="$(pkg-config --variable=gdk_pixbuf_cache_file gdk-pixbuf-2.0)"
           if [ -f "$GDK_PIXBUF_CACHE" ]; then
-            cp "$GDK_PIXBUF_CACHE" "$LIB_DIR/gdk-pixbuf-2.0/"
+            # Replace absolute paths with "loaders/"
+            sed 's|.*/loaders/|loaders/|g' "$GDK_PIXBUF_CACHE" > "$LIB_DIR/gdk-pixbuf-2.0/loaders.cache"
           fi
 
           # Bundle translations
@@ -255,7 +284,8 @@ jobs:
           # Ad-hoc sign everything (required on macOS after install_name_tool)
           codesign -s - --force "$LIB_DIR/"*.dylib
           codesign -s - --force "$MACOS/planify-bin"
-          codesign -s - --force "$MACOS/planify"
+          # Script signing removed to avoid bundle format errors
+          # codesign -s - --force "$MACOS/planify"
 
           tar czf planify-macos.tar.gz -C artifact Planify.app
 
