@@ -162,6 +162,26 @@ jobs:
             cp "$GLIB_NET_DIR"/*.so artifact/lib/gio/modules/ 2>/dev/null || true
             cp "$GLIB_NET_DIR"/*.dylib artifact/lib/gio/modules/ 2>/dev/null || true
           fi
+          # Rewrite and bundle dependencies of GIO modules
+          for mod in artifact/lib/gio/modules/*; do
+            [ -f "$mod" ] || continue
+            chmod 755 "$mod"
+            for dep in $(otool -L "$mod" | tail -n +2 | awk '{print $1}'); do
+              if echo "$dep" | grep -qE '^(/usr/lib|/System|@executable_path)'; then
+                continue
+              fi
+              depname=$(basename "$dep")
+              depsrc="$dep"
+              if echo "$dep" | grep -q '@rpath'; then
+                depsrc=$(resolve_rpath "$mod" "$dep")
+                [ -z "$depsrc" ] && continue
+              fi
+              install_name_tool -change "$dep" "@executable_path/lib/$depname" "$mod"
+              if [ -f "$depsrc" ]; then
+                bundle_lib "$depsrc"
+              fi
+            done
+          done
           gio-querymodules artifact/lib/gio/modules/ 2>/dev/null || true
 
           # Bundle GDK pixbuf loaders
