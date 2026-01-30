@@ -287,13 +287,11 @@ jobs:
           # Script signing removed to avoid bundle format errors
           # codesign -s - --force "$MACOS/planify"
 
-          tar czf planify-macos.tar.gz -C artifact Planify.app
-
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: planify-macos
-          path: planify-macos.tar.gz
+          path: artifact/Planify.app
 
   lint:
     name: "Vala Lint"
