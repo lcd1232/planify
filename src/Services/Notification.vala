@@ -30,6 +30,9 @@ public class Services.Notification : GLib.Object {
     }
 
 #if MACOS
+    [CCode (cname = "planify_init_macos_notifications")]
+    extern static void macos_init_notifications ();
+
     [CCode (cname = "planify_send_macos_notification")]
     extern void macos_send_notification (string title, string body, string item_id);
 #endif
@@ -37,6 +40,10 @@ public class Services.Notification : GLib.Object {
     private Gee.HashMap<string, string> reminders;
 
     construct {
+#if MACOS
+        // Request notification permission early so it's granted before any reminder fires
+        macos_init_notifications ();
+#endif
         regresh ();
     }
 

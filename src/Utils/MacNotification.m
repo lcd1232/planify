@@ -36,6 +36,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     const char *item_id_str = [itemId UTF8String];
     void *app = g_application_get_default();
     if (!app) {
+        NSLog(@"Planify: no GApplication default instance, cannot route notification action");
         completionHandler();
         return;
     }
@@ -55,7 +56,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         void *param = g_variant_new_string(item_id_str);
         g_action_group_activate_action(app, "snooze-60", param);
     } else if ([actionId isEqualToString:UNNotificationDefaultActionIdentifier]) {
-        // User tapped/clicked the notification body → show-item
+        // User clicked the notification body → show-item
         void *param = g_variant_new_string(item_id_str);
         g_action_group_activate_action(app, "show-item", param);
     }
@@ -77,19 +78,29 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 // ─── One-time setup ───
 
 static PlanifyNotificationDelegate *_delegate = nil;
+static BOOL _authorized = NO;
 
 static void planify_ensure_notification_setup(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
 
+        // Set delegate first so we receive callbacks
+        _delegate = [[PlanifyNotificationDelegate alloc] init];
+        center.delegate = _delegate;
+
         // Request authorization
         [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert |
                                                  UNAuthorizationOptionSound |
                                                  UNAuthorizationOptionBadge)
                              completionHandler:^(BOOL granted, NSError *error) {
+            _authorized = granted;
             if (error) {
                 NSLog(@"Planify: notification authorization error: %@", error);
+            } else if (!granted) {
+                NSLog(@"Planify: notification authorization denied by user");
+            } else {
+                NSLog(@"Planify: notification authorization granted");
             }
         }];
 
@@ -121,14 +132,16 @@ static void planify_ensure_notification_setup(void) {
                                                    options:UNNotificationCategoryOptionNone];
 
         [center setNotificationCategories:[NSSet setWithObject:reminderCategory]];
-
-        // Set delegate
-        _delegate = [[PlanifyNotificationDelegate alloc] init];
-        center.delegate = _delegate;
     });
 }
 
 // ─── Public API called from Vala ───
+
+// Call early at app startup to request notification permission before any reminders fire
+void planify_init_macos_notifications(void) {
+    planify_ensure_notification_setup();
+    NSLog(@"Planify: macOS notification system initialized");
+}
 
 void planify_send_macos_notification(const char *title, const char *body, const char *item_id) {
     @autoreleasepool {
@@ -144,7 +157,6 @@ void planify_send_macos_notification(const char *title, const char *body, const 
         }
 
         content.sound = [UNNotificationSound defaultSound];
-        content.interruptionLevel = UNNotificationInterruptionLevelTimeSensitive;
         content.categoryIdentifier = kPlanifyReminderCategory;
 
         if (item_id) {
@@ -166,6 +178,8 @@ void planify_send_macos_notification(const char *title, const char *body, const 
              withCompletionHandler:^(NSError *error) {
                 if (error) {
                     NSLog(@"Planify: failed to deliver notification: %@", error);
+                } else {
+                    NSLog(@"Planify: notification delivered successfully (id=%@)", requestId);
                 }
             }];
     }
