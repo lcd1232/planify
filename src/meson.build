@@ -143,6 +143,11 @@ if get_option('evolution') and is_linux
     sources += 'Dialogs/CalendarSync.vala'
 endif
 
+if host_machine.system() == 'darwin'
+    sources += 'Utils/MacNotification.m'
+    deps += lib_obj_dep
+endif
+
 executable(
   application_id,
   sources,

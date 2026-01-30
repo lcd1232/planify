@@ -64,6 +64,12 @@ if get_option('evolution') and is_linux
     endif
 endif
 
+if host_machine.system() == 'darwin'
+    add_project_arguments('-DMACOS', language: 'vala')
+    add_languages('objc', native: false)
+    lib_obj_dep = dependency('appleframeworks', modules: ['Foundation', 'AppKit'])
+endif
+
 ############
 # Resources #
 ############
