@@ -14,6 +14,7 @@
 
 ## ✨ Features
 
+
 ### 🎯 Core Functionality
 - **🚀 Modern Interface**: Clean, intuitive design that gets out of your way
 - **🤚 Drag & Drop**: Effortlessly organize tasks and projects with natural gestures

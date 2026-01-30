@@ -29,6 +29,11 @@ public class Services.Notification : GLib.Object {
         return _instance;
     }
 
+#if MACOS
+    [CCode (cname = "planify_send_macos_notification")]
+    extern void macos_send_notification (string title, string body);
+#endif
+
     private Gee.HashMap<string, string> reminders;
 
     construct {
@@ -59,8 +64,7 @@ public class Services.Notification : GLib.Object {
 
     private void reminder_added (Objects.Reminder reminder) {
         if (reminder.datetime.compare (new GLib.DateTime.now_local ()) <= 0) {
-            GLib.Notification notification = build_notification (reminder);
-            Planify.instance.send_notification (reminder.id, notification);
+            dispatch_notification (reminder.id, reminder);
             Services.Store.instance ().delete_reminder (reminder);
         } else if (Utils.Datetime.is_same_day (reminder.datetime, new GLib.DateTime.now_local ())) {
             uint interval = (uint) time_until_now (reminder.datetime);
@@ -84,9 +88,19 @@ public class Services.Notification : GLib.Object {
             return;
         }
 
-        GLib.Notification notification = build_notification (reminder);
-        Planify.instance.send_notification (uid, notification);
+        dispatch_notification (uid, reminder);
         Services.Store.instance ().delete_reminder (reminder);
+    }
+
+    private void dispatch_notification (string id, Objects.Reminder reminder) {
+        #if MACOS
+            string title = reminder.item.project.name;
+            string body = reminder.item.content;
+            macos_send_notification (title, body);
+        #else
+            GLib.Notification notification = build_notification (reminder);
+            Planify.instance.send_notification (id, notification);
+        #endif
     }
 
     private GLib.Notification build_notification (Objects.Reminder reminder) {
@@ -94,7 +108,7 @@ public class Services.Notification : GLib.Object {
         notification.set_body (reminder.item.content);
         notification.set_icon (new ThemedIcon ("io.github.alainm23.planify"));
         notification.set_priority (GLib.NotificationPriority.URGENT);
-        notification.set_default_action_and_target_value ("show-item", new Variant.string (reminder.item_id));
+        notification.set_default_action_and_target_value ("app.show-item", new Variant.string (reminder.item_id));
         notification.add_button_with_target_value (_("Complete"), "app.complete", new Variant.string (reminder.item_id));
         notification.add_button_with_target_value (_("Snooze for 10 minutes"), "app.snooze-10", new Variant.string (reminder.item_id));
         notification.add_button_with_target_value (_("Snooze for 30 minutes"), "app.snooze-30", new Variant.string (reminder.item_id));
