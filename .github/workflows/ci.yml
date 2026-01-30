@@ -28,14 +28,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Cache Homebrew dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/Library/Caches/Homebrew
-          key: ${{ runner.os }}-brew-${{ hashFiles('.github/workflows/ci.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-brew-
-
       - name: Install dependencies
         run: |
           brew install vala meson gtk4 libadwaita libsoup libgee json-glib libsecret gtksourceview5 gobject-introspection gxml glib-networking librsvg
@@ -69,12 +61,12 @@ jobs:
           MACOS="$CONTENTS/MacOS"
           RESOURCES="$CONTENTS/Resources"
           LIB_DIR="$MACOS/lib"
-          
+
           mkdir -p "$MACOS" "$RESOURCES" "$LIB_DIR"
-          
+
           BREW_PREFIX="$(brew --prefix)"
           LIBICAL_PREFIX="$BREW_PREFIX"
-          
+
           # Copy binary
           cp build/src/io.github.alainm23.planify "$MACOS/planify-bin"
 
@@ -209,7 +201,7 @@ jobs:
             cp "$GDK_PIXBUF_DIR"/*.so "$LIB_DIR/gdk-pixbuf-2.0/loaders/" 2>/dev/null || true
             cp "$GDK_PIXBUF_DIR"/*.dylib "$LIB_DIR/gdk-pixbuf-2.0/loaders/" 2>/dev/null || true
           fi
-          
+
           # Rewrite and bundle dependencies of GDK pixbuf loaders
           for mod in "$LIB_DIR/gdk-pixbuf-2.0/loaders/"*; do
             [ -f "$mod" ] || continue
@@ -230,7 +222,7 @@ jobs:
               fi
             done
           done
-          
+
           # Sign loaders
           codesign -s - --force "$LIB_DIR/gdk-pixbuf-2.0/loaders/"*.so 2>/dev/null || true
           codesign -s - --force "$LIB_DIR/gdk-pixbuf-2.0/loaders/"*.dylib 2>/dev/null || true
@@ -255,7 +247,7 @@ jobs:
               cp "$mo" "$RESOURCES/share/locale/$lang/LC_MESSAGES/"
             done
           fi
-          
+
           # Generate macOS Icons
           mkdir -p Planify.iconset
           ICON_SRC="data/icons/hicolor/scalable/apps/io.github.alainm23.planify.svg"
@@ -264,7 +256,7 @@ jobs:
             rsvg-convert -w $((size*2)) -h $((size*2)) "$ICON_SRC" -o Planify.iconset/icon_${size}x${size}@2x.png
           done
           iconutil -c icns Planify.iconset -o "$RESOURCES/AppIcon.icns"
-          
+
           # Info.plist
           # Extract version from meson.build or use 'git describe'
           VERSION=$(grep "version:" meson.build | head -n1 | cut -d"'" -f2)
@@ -288,8 +280,6 @@ jobs:
           # Ad-hoc sign everything (required on macOS after install_name_tool)
           codesign -s - --force "$LIB_DIR/"*.dylib
           codesign -s - --force --entitlements build-aux/macos/entitlements.plist "$MACOS/planify-bin"
-          # Script signing removed to avoid bundle format errors
-          # codesign -s - --force "$MACOS/planify"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4

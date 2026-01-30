@@ -74,6 +74,11 @@ public class Planify : Adw.Application {
     }
 
     protected override void activate () {
+        #if MACOS
+        var settings = Gtk.Settings.get_default ();
+        settings.gtk_decoration_layout = "close,minimize,maximize:";
+        #endif
+
         if (lang != "") {
             GLib.Environment.set_variable ("LANGUAGE", lang, true);
         }

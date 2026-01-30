@@ -67,7 +67,7 @@ endif
 if host_machine.system() == 'darwin'
     add_project_arguments('-D', 'MACOS', language: 'vala')
     add_languages('objc', native: false)
-    lib_obj_dep = dependency('appleframeworks', modules: ['Foundation', 'AppKit'])
+    lib_obj_dep = dependency('appleframeworks', modules: ['Foundation', 'AppKit', 'UserNotifications'])
 endif
 
 ############
