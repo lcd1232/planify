@@ -144,6 +144,11 @@ jobs:
           cp data/io.github.alainm23.planify.gschema.xml artifact/share/glib-2.0/schemas/
           glib-compile-schemas artifact/share/glib-2.0/schemas/
 
+          # Bundle icons
+          mkdir -p artifact/share/icons
+          cp -R data/icons/hicolor artifact/share/icons/
+          gtk4-update-icon-cache -f artifact/share/icons/hicolor 2>/dev/null || true
+
           # Bundle GDK pixbuf loaders
           mkdir -p artifact/lib/gdk-pixbuf-2.0
           GDK_PIXBUF_DIR="$(pkg-config --variable=gdk_pixbuf_moduledir gdk-pixbuf-2.0)"
@@ -160,6 +165,7 @@ jobs:
           #!/bin/bash
           DIR="$(cd "$(dirname "$0")" && pwd)"
           export GSETTINGS_SCHEMA_DIR="$DIR/share/glib-2.0/schemas"
+          export XDG_DATA_DIRS="$DIR/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
           export GDK_PIXBUF_MODULE_FILE="$DIR/lib/gdk-pixbuf-2.0/loaders.cache"
           export GDK_PIXBUF_MODULEDIR="$DIR/lib/gdk-pixbuf-2.0/loaders"
           exec "$DIR/io.github.alainm23.planify" "$@"
