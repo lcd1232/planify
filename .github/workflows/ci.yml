@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install vala meson gtk4 libadwaita libsoup libgee json-glib libsecret gtksourceview5 gobject-introspection gxml
+          brew install vala meson gtk4 libadwaita libsoup libgee json-glib libsecret gtksourceview5 gobject-introspection gxml glib-networking
 
       - name: Build libical with Vala bindings
         run: |
@@ -149,6 +149,21 @@ jobs:
           cp -R data/icons/hicolor artifact/share/icons/
           gtk4-update-icon-cache -f artifact/share/icons/hicolor 2>/dev/null || true
 
+          # Bundle GIO modules (TLS support)
+          GIO_MODULE_DIR="$(pkg-config --variable=giomoduledir gio-2.0)"
+          mkdir -p artifact/lib/gio/modules
+          if [ -d "$GIO_MODULE_DIR" ]; then
+            cp "$GIO_MODULE_DIR"/*.so artifact/lib/gio/modules/ 2>/dev/null || true
+            cp "$GIO_MODULE_DIR"/*.dylib artifact/lib/gio/modules/ 2>/dev/null || true
+          fi
+          # Also grab glib-networking TLS module
+          GLIB_NET_DIR="$(brew --prefix glib-networking)/lib/gio/modules"
+          if [ -d "$GLIB_NET_DIR" ]; then
+            cp "$GLIB_NET_DIR"/*.so artifact/lib/gio/modules/ 2>/dev/null || true
+            cp "$GLIB_NET_DIR"/*.dylib artifact/lib/gio/modules/ 2>/dev/null || true
+          fi
+          gio-querymodules artifact/lib/gio/modules/ 2>/dev/null || true
+
           # Bundle GDK pixbuf loaders
           mkdir -p artifact/lib/gdk-pixbuf-2.0
           GDK_PIXBUF_DIR="$(pkg-config --variable=gdk_pixbuf_moduledir gdk-pixbuf-2.0)"
@@ -166,6 +181,7 @@ jobs:
           DIR="$(cd "$(dirname "$0")" && pwd)"
           export GSETTINGS_SCHEMA_DIR="$DIR/share/glib-2.0/schemas"
           export XDG_DATA_DIRS="$DIR/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+          export GIO_MODULE_DIR="$DIR/lib/gio/modules"
           export GDK_PIXBUF_MODULE_FILE="$DIR/lib/gdk-pixbuf-2.0/loaders.cache"
           export GDK_PIXBUF_MODULEDIR="$DIR/lib/gdk-pixbuf-2.0/loaders"
           exec "$DIR/io.github.alainm23.planify" "$@"
