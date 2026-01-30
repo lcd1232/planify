@@ -296,6 +296,9 @@ public class Widgets.TranslationRow : Adw.PreferencesRow {
         try {
             var file = File.new_for_path (mo_path);
             var stream = yield file.read_async ();
+            if (stream == null) {
+                return null;
+            }
             data_stream = new DataInputStream (stream);
             data_stream.set_byte_order (DataStreamByteOrder.LITTLE_ENDIAN);
 
