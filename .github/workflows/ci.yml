@@ -28,6 +28,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Cache Homebrew dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: ${{ runner.os }}-brew-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-brew-
+
       - name: Install dependencies
         run: |
           brew install vala meson gtk4 libadwaita libsoup libgee json-glib libsecret gtksourceview5 gobject-introspection gxml glib-networking librsvg
