@@ -31,7 +31,7 @@ public class Services.Notification : GLib.Object {
 
 #if MACOS
     [CCode (cname = "planify_send_macos_notification")]
-    extern void macos_send_notification (string title, string body);
+    extern void macos_send_notification (string title, string body, string item_id);
 #endif
 
     private Gee.HashMap<string, string> reminders;
@@ -96,7 +96,7 @@ public class Services.Notification : GLib.Object {
         #if MACOS
             string title = reminder.item.project.name;
             string body = reminder.item.content;
-            macos_send_notification (title, body);
+            macos_send_notification (title, body, reminder.item_id);
         #else
             GLib.Notification notification = build_notification (reminder);
             Planify.instance.send_notification (id, notification);
