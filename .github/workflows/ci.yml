@@ -235,6 +235,10 @@ jobs:
           codesign -s - --force "$LIB_DIR/gdk-pixbuf-2.0/loaders/"*.so 2>/dev/null || true
           codesign -s - --force "$LIB_DIR/gdk-pixbuf-2.0/loaders/"*.dylib 2>/dev/null || true
 
+          # Sign GIO modules
+          codesign -s - --force "$LIB_DIR/gio/modules/"*.so 2>/dev/null || true
+          codesign -s - --force "$LIB_DIR/gio/modules/"*.dylib 2>/dev/null || true
+
           # Bundle and sanitize loaders.cache
           GDK_PIXBUF_CACHE="$(pkg-config --variable=gdk_pixbuf_cache_file gdk-pixbuf-2.0)"
           if [ -f "$GDK_PIXBUF_CACHE" ]; then
@@ -283,7 +287,7 @@ jobs:
 
           # Ad-hoc sign everything (required on macOS after install_name_tool)
           codesign -s - --force "$LIB_DIR/"*.dylib
-          codesign -s - --force "$MACOS/planify-bin"
+          codesign -s - --force --entitlements build-aux/macos/entitlements.plist "$MACOS/planify-bin"
           # Script signing removed to avoid bundle format errors
           # codesign -s - --force "$MACOS/planify"
 
