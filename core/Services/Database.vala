@@ -40,6 +40,15 @@ public class Services.Database : GLib.Object {
         return _instance;
     }
 
+    private string get_db_dir () {
+        // On macOS prefer the standard Application Support location instead of XDG
+        if (FileUtils.test ("/System/Library/CoreServices", FileTest.IS_DIR)) {
+            return Path.build_filename (Environment.get_home_dir (), "Library", "Application Support", "io.github.alainm23.planify");
+        }
+
+        return Path.build_filename (Environment.get_user_data_dir (), "io.github.alainm23.planify");
+    }
+
     construct {
         table_columns["Attachments"] = new Gee.ArrayList<string> ();
         table_columns["Attachments"].add ("id");
@@ -176,7 +185,9 @@ public class Services.Database : GLib.Object {
     }
 
     public void init_database () {
-        db_path = Environment.get_user_data_dir () + "/io.github.alainm23.planify/database.db";
+        var db_dir = get_db_dir ();
+        DirUtils.create_with_parents (db_dir, 0755);
+        db_path = Path.build_filename (db_dir, "database.db");
         Sqlite.Database.open (db_path, out db);
 
         create_tables ();
@@ -839,7 +850,7 @@ public class Services.Database : GLib.Object {
                 data=$data
             WHERE id=$id;
         """;
-        
+
         db.prepare_v2 (sql, sql.length, out stmt);
         set_parameter_str (stmt, "$source_type", source.source_type.to_string ());
         set_parameter_str (stmt, "$display_name", source.display_name);
@@ -2299,7 +2310,7 @@ public class Services.Database : GLib.Object {
         if (val == null) {
             return;
         }
-        
+
         int par_position = stmt.bind_parameter_index (par);
         if (par_position == 0) {
             warning ("bind parameter not found: %s", par);
@@ -2464,7 +2475,7 @@ public class Services.Database : GLib.Object {
 
             var url = Path.build_filename (
                 project.source.caldav_data.server_url,
-                "calendars", 
+                "calendars",
                 project.source.caldav_data.username,
                 project.id
             );
