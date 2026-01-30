@@ -22,6 +22,216 @@ jobs:
           manifest-path: build-aux/io.github.alainm23.planify.Devel.json
           cache-key: flatpak-builder-${{ github.sha }}
 
+  macos:
+    name: "macOS"
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          brew install vala meson gtk4 libadwaita libsoup libgee json-glib libsecret gtksourceview5 gobject-introspection gxml glib-networking
+
+      - name: Build libical with Vala bindings
+        run: |
+          git clone --branch v3.0.20 --depth 1 https://github.com/libical/libical.git /tmp/libical
+          cmake -S /tmp/libical -B /tmp/libical/build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="$(brew --prefix)" \
+              -DBUILD_SHARED_LIBS=ON \
+              -DGOBJECT_INTROSPECTION=true \
+              -DICAL_GLIB_VAPI=true \
+              -DICAL_GLIB=true \
+              -DICAL_BUILD_DOCS=false \
+              -DWITH_CXX_BINDINGS=false
+          cmake --build /tmp/libical/build
+          cmake --install /tmp/libical/build
+
+      - name: Build Planify
+        run: |
+          export PKG_CONFIG_PATH="$(brew --prefix)/opt/icu4c/lib/pkgconfig:$PKG_CONFIG_PATH"
+          meson setup build -Dwebkit=false -Dportal=false -Devolution=false --buildtype=release
+          meson compile -C build
+
+      - name: Package macOS artifact
+        run: |
+          mkdir -p artifact/lib
+          BREW_PREFIX="$(brew --prefix)"
+          LIBICAL_PREFIX="$BREW_PREFIX"
+          cp build/src/io.github.alainm23.planify artifact/
+
+          # Resolve an @rpath reference to an actual file path
+          resolve_rpath() {
+            local binary="$1"
+            local ref="$2"
+            local libname="${ref#@rpath/}"
+            # Search rpaths of the binary
+            for rp in $(otool -l "$binary" | grep -A2 LC_RPATH | grep 'path ' | awk '{print $2}'); do
+              if [ -f "$rp/$libname" ]; then
+                echo "$rp/$libname"
+                return
+              fi
+            done
+            # Search common locations
+            for dir in "$BREW_PREFIX/lib" "$LIBICAL_PREFIX/lib" "/usr/local/lib"; do
+              if [ -f "$dir/$libname" ]; then
+                echo "$dir/$libname"
+                return
+              fi
+            done
+            echo ""
+          }
+
+          # Recursive function to bundle a dylib and all its non-system dependencies
+          bundle_lib() {
+            local src="$1"
+            local name
+            name=$(basename "$src")
+            # Skip if already bundled
+            if [ -f "artifact/lib/$name" ]; then
+              return
+            fi
+            echo "Bundling: $name (from $src)"
+            cp "$src" "artifact/lib/$name"
+            chmod 755 "artifact/lib/$name"
+            # Rewrite its own install name
+            install_name_tool -id "@executable_path/lib/$name" "artifact/lib/$name"
+            # Process all non-system dependencies
+            for dep in $(otool -L "artifact/lib/$name" | tail -n +2 | awk '{print $1}'); do
+              # Skip system libs
+              if echo "$dep" | grep -qE '^(/usr/lib|/System|@executable_path)'; then
+                continue
+              fi
+              local depname
+              depname=$(basename "$dep")
+              local depsrc="$dep"
+              # Resolve @rpath references
+              if echo "$dep" | grep -q '@rpath'; then
+                depsrc=$(resolve_rpath "$src" "$dep")
+                if [ -z "$depsrc" ]; then
+                  echo "WARNING: Could not resolve $dep for $name"
+                  continue
+                fi
+              fi
+              # Rewrite reference in current lib
+              install_name_tool -change "$dep" "@executable_path/lib/$depname" "artifact/lib/$name"
+              # Recursively bundle the dependency
+              bundle_lib "$depsrc"
+            done
+          }
+
+          # Bundle libplanify from the build
+          bundle_lib "build/core/libplanify.0.dylib"
+
+          # Process the main executable
+          for ref in $(otool -L artifact/io.github.alainm23.planify | tail -n +2 | awk '{print $1}'); do
+            if echo "$ref" | grep -qE '^(/usr/lib|/System)'; then
+              continue
+            fi
+            refname=$(basename "$ref")
+            refsrc="$ref"
+            if echo "$ref" | grep -q '@rpath'; then
+              refsrc=$(resolve_rpath "build/src/io.github.alainm23.planify" "$ref")
+            fi
+            install_name_tool -change "$ref" "@executable_path/lib/$refname" artifact/io.github.alainm23.planify
+            if [ -n "$refsrc" ] && [ -f "$refsrc" ]; then
+              bundle_lib "$refsrc"
+            fi
+          done
+
+          # Bundle GSettings schema
+          mkdir -p artifact/share/glib-2.0/schemas
+          cp data/io.github.alainm23.planify.gschema.xml artifact/share/glib-2.0/schemas/
+          glib-compile-schemas artifact/share/glib-2.0/schemas/
+
+          # Bundle icons
+          mkdir -p artifact/share/icons
+          cp -R data/icons/hicolor artifact/share/icons/
+          gtk4-update-icon-cache -f artifact/share/icons/hicolor 2>/dev/null || true
+
+          # Bundle GIO modules (TLS support)
+          GIO_MODULE_DIR="$(pkg-config --variable=giomoduledir gio-2.0)"
+          mkdir -p artifact/lib/gio/modules
+          if [ -d "$GIO_MODULE_DIR" ]; then
+            cp "$GIO_MODULE_DIR"/*.so artifact/lib/gio/modules/ 2>/dev/null || true
+            cp "$GIO_MODULE_DIR"/*.dylib artifact/lib/gio/modules/ 2>/dev/null || true
+          fi
+          # Also grab glib-networking TLS module
+          GLIB_NET_DIR="$(brew --prefix glib-networking)/lib/gio/modules"
+          if [ -d "$GLIB_NET_DIR" ]; then
+            cp "$GLIB_NET_DIR"/*.so artifact/lib/gio/modules/ 2>/dev/null || true
+            cp "$GLIB_NET_DIR"/*.dylib artifact/lib/gio/modules/ 2>/dev/null || true
+          fi
+          # Rewrite and bundle dependencies of GIO modules
+          for mod in artifact/lib/gio/modules/*; do
+            [ -f "$mod" ] || continue
+            chmod 755 "$mod"
+            for dep in $(otool -L "$mod" | tail -n +2 | awk '{print $1}'); do
+              if echo "$dep" | grep -qE '^(/usr/lib|/System|@executable_path)'; then
+                continue
+              fi
+              depname=$(basename "$dep")
+              depsrc="$dep"
+              if echo "$dep" | grep -q '@rpath'; then
+                depsrc=$(resolve_rpath "$mod" "$dep")
+                [ -z "$depsrc" ] && continue
+              fi
+              install_name_tool -change "$dep" "@executable_path/lib/$depname" "$mod"
+              if [ -f "$depsrc" ]; then
+                bundle_lib "$depsrc"
+              fi
+            done
+          done
+          gio-querymodules artifact/lib/gio/modules/ 2>/dev/null || true
+
+          # Bundle GDK pixbuf loaders
+          mkdir -p artifact/lib/gdk-pixbuf-2.0
+          GDK_PIXBUF_DIR="$(pkg-config --variable=gdk_pixbuf_moduledir gdk-pixbuf-2.0)"
+          if [ -d "$GDK_PIXBUF_DIR" ]; then
+            cp -R "$GDK_PIXBUF_DIR" artifact/lib/gdk-pixbuf-2.0/
+          fi
+          GDK_PIXBUF_CACHE="$(pkg-config --variable=gdk_pixbuf_cache_file gdk-pixbuf-2.0)"
+          if [ -f "$GDK_PIXBUF_CACHE" ]; then
+            cp "$GDK_PIXBUF_CACHE" artifact/lib/gdk-pixbuf-2.0/
+          fi
+
+          # Create wrapper script that sets required env vars
+          # Bundle translations
+          if [ -d build/po ]; then
+            for mo in build/po/*/LC_MESSAGES/*.mo; do
+              [ -f "$mo" ] || continue
+              lang=$(echo "$mo" | sed 's|build/po/\(.*\)/LC_MESSAGES/.*|\1|')
+              mkdir -p "artifact/share/locale/$lang/LC_MESSAGES"
+              cp "$mo" "artifact/share/locale/$lang/LC_MESSAGES/"
+            done
+          fi
+
+          cat > artifact/planify <<'WRAPPER'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export LANG="${LANG:-en_US.UTF-8}"
+          export GSETTINGS_SCHEMA_DIR="$DIR/share/glib-2.0/schemas"
+          export XDG_DATA_DIRS="$DIR/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+          export GIO_MODULE_DIR="$DIR/lib/gio/modules"
+          export GDK_PIXBUF_MODULE_FILE="$DIR/lib/gdk-pixbuf-2.0/loaders.cache"
+          export GDK_PIXBUF_MODULEDIR="$DIR/lib/gdk-pixbuf-2.0/loaders"
+          export LOCALEDIR="$DIR/share/locale"
+          exec "$DIR/io.github.alainm23.planify" "$@"
+          WRAPPER
+          chmod +x artifact/planify
+
+          # Ad-hoc sign everything (required on macOS after install_name_tool)
+          codesign -s - --force artifact/lib/*.dylib
+          codesign -s - --force artifact/io.github.alainm23.planify
+
+          tar czf planify-macos.tar.gz -C artifact .
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: planify-macos
+          path: planify-macos.tar.gz
+
   lint:
     name: "Vala Lint"
     runs-on: ubuntu-latest

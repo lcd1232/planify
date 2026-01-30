@@ -4,14 +4,14 @@ deps = [
   m_dep
 ]
 
-if get_option('webkit')
+if get_option('webkit') and is_linux
     if webkitgtk_dep.found()
         deps += webkitgtk_dep
     endif
 endif
 
 
-if get_option('portal')
+if get_option('portal') and is_linux
     if libportal_dep.found()
         deps += libportal_dep
     endif
@@ -21,7 +21,7 @@ if get_option('portal')
 endif
 
 
-if get_option('evolution')
+if get_option('evolution') and is_linux
     if libedataserver_dep.found()
         deps += libedataserver_dep
     endif
@@ -137,7 +137,7 @@ sources = files(
   'Dialogs/Preferences/Pages/Accounts/InboxPage.vala'
 )
 
-if get_option('evolution')
+if get_option('evolution') and is_linux
     sources += 'Widgets/EventRow.vala'
     sources += 'Widgets/EventsList.vala'
     sources += 'Dialogs/CalendarSync.vala'

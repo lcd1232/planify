@@ -8,6 +8,8 @@ gnome = import('gnome')
 i18n = import('i18n')
 pkgconfig = import('pkgconfig')
 
+is_linux = host_machine.system() == 'linux'
+
 add_global_arguments('-DGETTEXT_PACKAGE="@0@"'.format (meson.project_name()), language:'c')
 add_project_arguments('-DLIBICAL_GLIB_UNSTABLE_API=1', language: 'c')
 
@@ -26,7 +28,7 @@ libspelling = dependency('libspelling-1', required: get_option('spelling'))
 gtksourceview_dep = dependency('gtksourceview-5')
 m_dep = meson.get_compiler('c').find_library('m', required : false)
 
-if get_option('webkit')
+if get_option('webkit') and is_linux
     webkitgtk_dep = dependency('webkitgtk-6.0')
     add_project_arguments('-D', 'USE_WEBKITGTK', language: 'vala')
     if not webkitgtk_dep.found()
@@ -38,7 +40,7 @@ if libspelling.found ()
   add_project_arguments(['--define=WITH_LIBSPELLING'], language: 'vala')
 endif
 
-if get_option('portal')
+if get_option('portal') and is_linux
     libportal_dep = dependency('libportal', required: true)
     libportal_gtk4_dep = dependency('libportal-gtk4', required: true)
     add_project_arguments('-D', 'WITH_LIBPORTAL', language: 'vala')
@@ -50,7 +52,7 @@ if get_option('portal')
     endif
 endif
 
-if get_option('evolution')
+if get_option('evolution') and is_linux
     libecal_dep = dependency('libecal-2.0', version: '>= 3.45.1')
     libedataserver_dep = dependency('libedataserver-1.2', version: '>= 3.45.1')
     add_project_arguments('-D', 'WITH_EVOLUTION', language: 'vala')
@@ -135,8 +137,15 @@ summary({
   'Profile': get_option('profile'),
 }, section: 'Development')
 
-gnome.post_install(
-  glib_compile_schemas: true,
-  gtk_update_icon_cache: true,
-  update_desktop_database: true,
-)
+if is_linux
+  gnome.post_install(
+    glib_compile_schemas: true,
+    gtk_update_icon_cache: true,
+    update_desktop_database: true,
+  )
+else
+  gnome.post_install(
+    glib_compile_schemas: true,
+    gtk_update_icon_cache: true,
+  )
+endif

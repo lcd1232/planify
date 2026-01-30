@@ -1,40 +1,41 @@
-# Desktop
-desktop_conf = configuration_data()
-desktop_conf.set('exec', application_id)
-desktop_conf.set('icon', application_id)
-desktop_file = i18n.merge_file(
-  input: configure_file(
-    input: files('io.github.alainm23.planify.desktop.in.in'),
-    output: 'io.github.alainm23.planify.desktop.in',
-    configuration: desktop_conf,
-  ),
-  output: '@0@.desktop'.format(application_id),
-  type: 'desktop',
-  po_dir: join_paths(meson.project_source_root(), 'po'),
-  install: true,
-  install_dir: get_option('datadir') / 'applications',
-)
+if is_linux
+  # Desktop
+  desktop_conf = configuration_data()
+  desktop_conf.set('exec', application_id)
+  desktop_conf.set('icon', application_id)
+  desktop_file = i18n.merge_file(
+    input: configure_file(
+      input: files('io.github.alainm23.planify.desktop.in.in'),
+      output: 'io.github.alainm23.planify.desktop.in',
+      configuration: desktop_conf,
+    ),
+    output: '@0@.desktop'.format(application_id),
+    type: 'desktop',
+    po_dir: join_paths(meson.project_source_root(), 'po'),
+    install: true,
+    install_dir: get_option('datadir') / 'applications',
+  )
 
-desktop_utils = find_program('desktop-file-validate', required: false)
-if desktop_utils.found()
-  test('Validate desktop file', desktop_utils, args: [desktop_file])
+  desktop_utils = find_program('desktop-file-validate', required: false)
+  if desktop_utils.found()
+    test('Validate desktop file', desktop_utils, args: [desktop_file])
+  endif
+
+  # AppStream
+  appdata_conf = configuration_data()
+  appdata_conf.set('appid', application_id)
+  appstream_file = i18n.merge_file(
+    input: configure_file(
+      input: files('io.github.alainm23.planify.appdata.xml.in.in'),
+      output: 'io.github.alainm23.planify.appdata.xml.in',
+      configuration: appdata_conf
+    ),
+    output: '@0@.appdata.xml'.format(application_id),
+    po_dir: join_paths(meson.project_source_root(), 'po'),
+    install: true,
+    install_dir: get_option('datadir') / 'appdata',
+  )
 endif
-
-
-# AppStream 
-appdata_conf = configuration_data()
-appdata_conf.set('appid', application_id)
-appstream_file = i18n.merge_file(
-  input: configure_file(
-    input: files('io.github.alainm23.planify.appdata.xml.in.in'),
-    output: 'io.github.alainm23.planify.appdata.xml.in',
-    configuration: appdata_conf
-  ),
-  output: '@0@.appdata.xml'.format(application_id),
-  po_dir: join_paths(meson.project_source_root(), 'po'),
-  install: true,
-  install_dir: get_option('datadir') / 'appdata',
-)
 
 install_data('io.github.alainm23.planify.gschema.xml',
   install_dir: get_option('datadir') / 'glib-2.0/schemas',
