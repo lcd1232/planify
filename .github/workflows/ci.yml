@@ -56,52 +56,92 @@ jobs:
       - name: Package macOS artifact
         run: |
           mkdir -p artifact/lib
+          BREW_PREFIX="$(brew --prefix)"
+          LIBICAL_PREFIX="$BREW_PREFIX"
           cp build/src/io.github.alainm23.planify artifact/
 
-          # Recursive function to bundle a dylib and its dependencies
+          # Resolve an @rpath reference to an actual file path
+          resolve_rpath() {
+            local binary="$1"
+            local ref="$2"
+            local libname="${ref#@rpath/}"
+            # Search rpaths of the binary
+            for rp in $(otool -l "$binary" | grep -A2 LC_RPATH | grep 'path ' | awk '{print $2}'); do
+              if [ -f "$rp/$libname" ]; then
+                echo "$rp/$libname"
+                return
+              fi
+            done
+            # Search common locations
+            for dir in "$BREW_PREFIX/lib" "$LIBICAL_PREFIX/lib" "/usr/local/lib"; do
+              if [ -f "$dir/$libname" ]; then
+                echo "$dir/$libname"
+                return
+              fi
+            done
+            echo ""
+          }
+
+          # Recursive function to bundle a dylib and all its non-system dependencies
           bundle_lib() {
             local src="$1"
             local name
             name=$(basename "$src")
-            # Skip if already bundled or if it's a system lib
+            # Skip if already bundled
             if [ -f "artifact/lib/$name" ]; then
               return
             fi
+            echo "Bundling: $name (from $src)"
             cp "$src" "artifact/lib/$name"
             chmod 755 "artifact/lib/$name"
             # Rewrite its own install name
             install_name_tool -id "@executable_path/lib/$name" "artifact/lib/$name"
-            # Recursively bundle its non-system dependencies
-            for dep in $(otool -L "artifact/lib/$name" | tail -n +2 | awk '{print $1}' | grep '/opt/homebrew'); do
+            # Process all non-system dependencies
+            for dep in $(otool -L "artifact/lib/$name" | tail -n +2 | awk '{print $1}'); do
+              # Skip system libs
+              if echo "$dep" | grep -qE '^(/usr/lib|/System|@executable_path)'; then
+                continue
+              fi
               local depname
               depname=$(basename "$dep")
+              local depsrc="$dep"
+              # Resolve @rpath references
+              if echo "$dep" | grep -q '@rpath'; then
+                depsrc=$(resolve_rpath "$src" "$dep")
+                if [ -z "$depsrc" ]; then
+                  echo "WARNING: Could not resolve $dep for $name"
+                  continue
+                fi
+              fi
               # Rewrite reference in current lib
               install_name_tool -change "$dep" "@executable_path/lib/$depname" "artifact/lib/$name"
               # Recursively bundle the dependency
-              bundle_lib "$dep"
+              bundle_lib "$depsrc"
             done
           }
 
           # Bundle libplanify from the build
-          cp build/core/libplanify.0.dylib artifact/lib/
-          chmod 755 artifact/lib/libplanify.0.dylib
-          install_name_tool -id "@executable_path/lib/libplanify.0.dylib" artifact/lib/libplanify.0.dylib
+          bundle_lib "build/core/libplanify.0.dylib"
 
-          # Rewrite libplanify's own homebrew deps
-          for dep in $(otool -L artifact/lib/libplanify.0.dylib | tail -n +2 | awk '{print $1}' | grep '/opt/homebrew'); do
-            depname=$(basename "$dep")
-            install_name_tool -change "$dep" "@executable_path/lib/$depname" artifact/lib/libplanify.0.dylib
-            bundle_lib "$dep"
-          done
-
-          # Rewrite the build-dir reference to libplanify in the executable
-          for ref in $(otool -L artifact/io.github.alainm23.planify | tail -n +2 | awk '{print $1}' | grep -v '/usr/lib' | grep -v '/System'); do
+          # Process the main executable
+          for ref in $(otool -L artifact/io.github.alainm23.planify | tail -n +2 | awk '{print $1}'); do
+            if echo "$ref" | grep -qE '^(/usr/lib|/System)'; then
+              continue
+            fi
             refname=$(basename "$ref")
+            refsrc="$ref"
+            if echo "$ref" | grep -q '@rpath'; then
+              refsrc=$(resolve_rpath "build/src/io.github.alainm23.planify" "$ref")
+            fi
             install_name_tool -change "$ref" "@executable_path/lib/$refname" artifact/io.github.alainm23.planify
-            if [ -f "$ref" ] && [ ! -f "artifact/lib/$refname" ]; then
-              bundle_lib "$ref"
+            if [ -n "$refsrc" ] && [ -f "$refsrc" ]; then
+              bundle_lib "$refsrc"
             fi
           done
+
+          # Ad-hoc sign everything (required on macOS after install_name_tool)
+          codesign -s - --force artifact/lib/*.dylib
+          codesign -s - --force artifact/io.github.alainm23.planify
 
           tar czf planify-macos.tar.gz -C artifact .
 
