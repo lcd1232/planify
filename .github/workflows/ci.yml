@@ -22,6 +22,57 @@ jobs:
           manifest-path: build-aux/io.github.alainm23.planify.Devel.json
           cache-key: flatpak-builder-${{ github.sha }}
 
+  macos:
+    name: "macOS"
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          brew install vala meson gtk4 libadwaita libsoup libgee json-glib libsecret gtksourceview5 gobject-introspection gxml
+
+      - name: Build libical with Vala bindings
+        run: |
+          git clone --branch v3.0.20 --depth 1 https://github.com/libical/libical.git /tmp/libical
+          cmake -S /tmp/libical -B /tmp/libical/build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="$(brew --prefix)" \
+              -DBUILD_SHARED_LIBS=ON \
+              -DGOBJECT_INTROSPECTION=true \
+              -DICAL_GLIB_VAPI=true \
+              -DICAL_GLIB=true \
+              -DICAL_BUILD_DOCS=false \
+              -DWITH_CXX_BINDINGS=false
+          cmake --build /tmp/libical/build
+          cmake --install /tmp/libical/build
+
+      - name: Build Planify
+        run: |
+          export PKG_CONFIG_PATH="$(brew --prefix)/opt/icu4c/lib/pkgconfig:$PKG_CONFIG_PATH"
+          meson setup build -Dwebkit=false -Dportal=false -Devolution=false --buildtype=release
+          meson compile -C build
+
+      - name: Package macOS artifact
+        run: |
+          mkdir -p artifact
+          cp build/src/io.github.alainm23.planify artifact/
+          # Bundle shared libraries
+          mkdir -p artifact/lib
+          for lib in $(otool -L artifact/io.github.alainm23.planify | grep '/opt/homebrew' | awk '{print $1}'); do
+            cp "$lib" artifact/lib/
+          done
+          cp build/core/libplanify.0.dylib artifact/lib/
+          # Rewrite rpaths to use bundled libs
+          install_name_tool -add_rpath @executable_path/lib artifact/io.github.alainm23.planify 2>/dev/null || true
+          tar czf planify-macos.tar.gz -C artifact .
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: planify-macos
+          path: planify-macos.tar.gz
+
   lint:
     name: "Vala Lint"
     runs-on: ubuntu-latest

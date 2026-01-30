@@ -127,7 +127,7 @@ core_files = files(
     'Objects/Filters/AllItems.vala'
 )
 
-if get_option('evolution')
+if get_option('evolution') and is_linux
     core_files += 'Services/CalendarEvents/CalendarEvents.vala'
     core_files += 'Services/CalendarEvents/DateIterator.vala'
     core_files += 'Services/CalendarEvents/DateRange.vala'
@@ -150,7 +150,7 @@ core_deps = [
   gtksourceview_dep
 ]
 
-if get_option('evolution')
+if get_option('evolution') and is_linux
     if libecal_dep.found()
         core_deps += libecal_dep
         core_deps += libedataserver_dep
