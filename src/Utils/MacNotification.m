@@ -3,7 +3,7 @@
 #import <UserNotifications/UserNotifications.h>
 
 // GLib/GApplication callback to activate app actions from notification responses
-extern void g_application_activate_action(void *application, const char *action_name, void *parameter);
+extern void g_action_group_activate_action(void *action_group, const char *action_name, void *parameter);
 extern void *g_application_get_default(void);
 extern void *g_variant_new_string(const char *string);
 
@@ -44,20 +44,20 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 
     if ([actionId isEqualToString:kActionComplete]) {
         void *param = g_variant_new_string(item_id_str);
-        g_application_activate_action(app, "complete", param);
+        g_action_group_activate_action(app, "complete", param);
     } else if ([actionId isEqualToString:kActionSnooze10]) {
         void *param = g_variant_new_string(item_id_str);
-        g_application_activate_action(app, "snooze-10", param);
+        g_action_group_activate_action(app, "snooze-10", param);
     } else if ([actionId isEqualToString:kActionSnooze30]) {
         void *param = g_variant_new_string(item_id_str);
-        g_application_activate_action(app, "snooze-30", param);
+        g_action_group_activate_action(app, "snooze-30", param);
     } else if ([actionId isEqualToString:kActionSnooze60]) {
         void *param = g_variant_new_string(item_id_str);
-        g_application_activate_action(app, "snooze-60", param);
+        g_action_group_activate_action(app, "snooze-60", param);
     } else if ([actionId isEqualToString:UNNotificationDefaultActionIdentifier]) {
         // User tapped/clicked the notification body → show-item
         void *param = g_variant_new_string(item_id_str);
-        g_application_activate_action(app, "show-item", param);
+        g_action_group_activate_action(app, "show-item", param);
     }
 
     completionHandler();
